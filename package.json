@@ -1,0 +1,12 @@
+{
+  "name": "ecs-demo-app",
+  "version": "1.0.0",
+  "description": "Minimal app to demo Docker + Jenkins + ECR + ECS pipeline",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
