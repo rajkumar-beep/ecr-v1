@@ -2,16 +2,15 @@ pipeline {
     agent any
 
     // ---- Properties / variables defined here, used throughout the file ----
-       environment {
-    IMAGE_NAME = 'ecs-demo-app'
-    IMAGE_TAG = "${BUILD_NUMBER}"
+    environment {
+        IMAGE_NAME = 'ecs-demo-app'
+        IMAGE_TAG = "${BUILD_NUMBER}"
 
-    AWS_REGION = 'ap-south-1'
-    AWS_ACCOUNT_ID = '884967220621'
-    ECR_REPOSITORY = 'ecr-demo-app'
-    ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-}
-    
+        AWS_REGION = 'ap-south-1'
+        AWS_ACCOUNT_ID = '884967220621'
+        ECR_REPOSITORY = 'ecr-demo-app'
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    }
 
     stages {
 
@@ -25,15 +24,14 @@ pipeline {
             }
         }
 
-        // STAGE 2: Run tests
-        // WHY: Catch broken code BEFORE wasting time building a Docker image
-        // out of it. If tests fail, pipeline stops here automatically.
-       stage('Install Dependencies') {
-    steps {
-        echo "Installing dependencies..."
-        sh 'npm install'
-    }
-}
+        // STAGE 2: Install dependencies
+        // WHY: Install the application's required packages before building.
+        stage('Install Dependencies') {
+            steps {
+                echo "Installing dependencies..."
+                sh 'npm install'
+            }
+        }
 
         // STAGE 3: Build Docker image
         // WHY: Package the app + its runtime into a single image, tagged
@@ -44,7 +42,9 @@ pipeline {
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
- stage('Login to ECR') {
+
+        // STAGE 4: Login to AWS ECR
+        stage('Login to ECR') {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
@@ -55,6 +55,29 @@ pipeline {
                     docker login --username AWS --password-stdin $ECR_REGISTRY
                     '''
                 }
+            }
+        }
+
+        // STAGE 5: Tag Docker image
+        stage('Tag Image') {
+            steps {
+                sh '''
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} \
+                ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} \
+                ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                '''
+            }
+        }
+
+        // STAGE 6: Push Docker image to ECR
+        stage('Push Image') {
+            steps {
+                sh '''
+                docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+                docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                '''
             }
         }
 
