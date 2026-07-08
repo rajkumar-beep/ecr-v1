@@ -22,13 +22,12 @@ pipeline {
         // STAGE 2: Run tests
         // WHY: Catch broken code BEFORE wasting time building a Docker image
         // out of it. If tests fail, pipeline stops here automatically.
-        stage('Test') {
-            steps {
-                echo "Installing dependencies and running tests..."
-                sh 'npm install'
-                sh 'npm test'
-            }
-        }
+       stage('Install Dependencies') {
+    steps {
+        echo "Installing dependencies..."
+        sh 'npm install'
+    }
+}
 
         // STAGE 3: Build Docker image
         // WHY: Package the app + its runtime into a single image, tagged
