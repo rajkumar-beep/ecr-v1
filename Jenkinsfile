@@ -1,83 +1,98 @@
 pipeline {
     agent any
 
-    // ---- Properties / variables defined here, used throughout the file ----
     environment {
+        // Docker
         IMAGE_NAME = 'ecs-demo-app'
-        IMAGE_TAG = "${BUILD_NUMBER}"
+        IMAGE_TAG  = "${BUILD_NUMBER}"
 
-        AWS_REGION = 'ap-south-1'
+        // AWS
+        AWS_REGION     = 'ap-south-1'
         AWS_ACCOUNT_ID = '884967220621'
+
+        // ECR
         ECR_REPOSITORY = 'ecr-demo-app'
-        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+        // ECS
+        ECS_CLUSTER = 'ecr-demp-cluster'
+        ECS_SERVICE = 'ecr-demo-task-service-6wuzzt9w'
     }
 
     stages {
 
-        // STAGE 1: Pull code from GitHub
-        // WHY: Jenkins doesn't have your code by default - this stage checks
-        // out the exact commit that triggered the build.
-        stage('Pull') {
+        stage('Checkout Code') {
             steps {
-                echo "Pulling latest code from repository..."
                 checkout scm
             }
         }
 
-        // STAGE 2: Install dependencies
-        // WHY: Install the application's required packages before building.
         stage('Install Dependencies') {
             steps {
-                echo "Installing dependencies..."
                 sh 'npm install'
             }
         }
 
-        // STAGE 3: Build Docker image
-        // WHY: Package the app + its runtime into a single image, tagged
-        // with the Jenkins build number so every build is traceable.
-        stage('Build Image') {
+        stage('Build Docker Image') {
             steps {
-                echo "Building Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh """
+                docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                """
             }
         }
 
-        // STAGE 4: Login to AWS ECR
-        stage('Login to ECR') {
+        stage('Login to Amazon ECR') {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'ecr-demo-app'
                 ]]) {
-                    sh '''
-                    aws ecr get-login-password --region $AWS_REGION | \
-                    docker login --username AWS --password-stdin $ECR_REGISTRY
-                    '''
+
+                    sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login \
+                    --username AWS \
+                    --password-stdin ${ECR_REGISTRY}
+                    """
                 }
             }
         }
 
-        // STAGE 5: Tag Docker image
-        stage('Tag Image') {
+        stage('Tag Docker Image') {
             steps {
-                sh '''
-                docker tag ${IMAGE_NAME}:${IMAGE_TAG} \
-                ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+                sh """
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
 
-                docker tag ${IMAGE_NAME}:${IMAGE_TAG} \
-                ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-                '''
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                """
             }
         }
 
-        // STAGE 6: Push Docker image to ECR
-        stage('Push Image') {
+        stage('Push Docker Image') {
             steps {
-                sh '''
+                sh """
                 docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+
                 docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-                '''
+                """
+            }
+        }
+
+        stage('Deploy to ECS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'ecr-demo-app'
+                ]]) {
+
+                    sh """
+                    aws ecs update-service \
+                    --cluster ${ECS_CLUSTER} \
+                    --service ${ECS_SERVICE} \
+                    --force-new-deployment \
+                    --region ${AWS_REGION}
+                    """
+                }
             }
         }
 
@@ -85,10 +100,17 @@ pipeline {
 
     post {
         success {
-            echo "Build succeeded: ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "===================================="
+            echo "Pipeline Completed Successfully"
+            echo "Docker Image Version : ${IMAGE_TAG}"
+            echo "Repository : ${ECR_REPOSITORY}"
+            echo "Cluster : ${ECS_CLUSTER}"
+            echo "Service : ${ECS_SERVICE}"
+            echo "===================================="
         }
+
         failure {
-            echo "Pipeline failed - check the stage above that errored"
+            echo "Pipeline Failed!"
         }
     }
 }
